@@ -126,7 +126,7 @@ function App() {
         ) : (
           <>
             <h1>Scanneur de Produits</h1>
-            <p>Pointez la caméra sur un code-barres ou un texte.</p>
+            <p>Pointez la caméra sur un code-barre ou un texte.</p>
             <div ref={scannerRef} className="scanner-container"></div>
             {error && <p className="error-message">{error}</p>}
             <div className="manual-search">
@@ -135,7 +135,7 @@ function App() {
                 type="text" 
                 value={manualCode} 
                 onChange={(e) => setManualCode(e.target.value)} 
-                placeholder="Entrez un code"
+                placeholder="Entrez sku ou upc"
               />
               <button onClick={() => searchProduct(manualCode)}>Rechercher</button>
             </div>

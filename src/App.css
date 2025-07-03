@@ -42,23 +42,19 @@ h1 {
 }
 
 .manual-search {
-  margin-top: 20px;
-}
-
-.manual-search input {
-  flex-grow: 1;
-  padding: 10px;
-  border: 1px solid #ccc;
-  border-radius: 4px;
-  font-size: 1em;
-  margin: 0 10px;
-}
-
-.manual-search {
   display: flex;
   justify-content: space-between;
   align-items: center;
   margin-top: 20px;
+  gap: 10px; /* Adds space between elements */
+}
+
+.manual-search input {
+  flex-grow: 1; /* Allows input to take available space */
+  padding: 10px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font-size: 1em;
 }
 
 .manual-search button {
@@ -70,6 +66,18 @@ h1 {
   cursor: pointer;
   font-size: 1em;
   white-space: nowrap;
+}
+
+/* Responsive styles for mobile screens */
+@media (max-width: 600px) {
+  .manual-search {
+    flex-direction: column; /* Stack elements vertically */
+  }
+
+  .manual-search input,
+  .manual-search button {
+    width: 100%; /* Make elements full-width */
+  }
 }
 
 .manual-search button:hover {
