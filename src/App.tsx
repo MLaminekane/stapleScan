@@ -38,13 +38,13 @@ function App() {
 
       if (result?.data?.products?.length === 1) {
         const productUrl = result.data.products[0].productUrl;
-        window.location.replace(`https://www.bureauengros.com${productUrl}`);
+        window.location.href = `https://www.bureauengros.com${productUrl}`;
       } else {
-        window.location.replace(fallbackUrl);
+        window.location.href = fallbackUrl;
       }
     } catch (err) {
       console.error("API call failed, falling back to search page", err);
-      window.location.replace(fallbackUrl);
+      window.location.href = fallbackUrl;
     }
   }, [isLoading]);
 
