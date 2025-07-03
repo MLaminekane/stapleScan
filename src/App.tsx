@@ -3,8 +3,16 @@ import Quagga from 'quagga';
 import Tesseract from 'tesseract.js';
 import './App.css';
 
-interface Product { productUrl: string; }
-interface ApiResponse { data?: { products?: Product[]; }; }
+// Define types for the API response to avoid using 'any'
+interface Product {
+  productUrl: string;
+}
+
+interface ApiResponse {
+  data?: {
+    products?: Product[];
+  };
+}
 
 function App() {
   const [manualCode, setManualCode] = useState('');
@@ -13,18 +21,12 @@ function App() {
   const [loadingMessage, setLoadingMessage] = useState('Recherche en cours...');
   const scannerRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
-  const isLoadingRef = useRef(false);
-
-  const setLoadingState = (loading: boolean, message = 'Recherche en cours...') => {
-    isLoadingRef.current = loading;
-    setIsLoading(loading);
-    setLoadingMessage(message);
-  };
 
   const searchProduct = useCallback(async (code: string) => {
-    if (!code || isLoadingRef.current) return;
+    if (!code || isLoading) return;
 
-    setLoadingState(true, 'Recherche du produit...');
+    setLoadingMessage('Recherche du produit...');
+    setIsLoading(true);
 
     const fallbackUrl = `https://www.bureauengros.com/search?q=${code}`;
     const apiUrl = `https://www.bureauengros.com/proxy/product-search/v2/products/search?q=${code}&lang=fr`;
@@ -35,7 +37,8 @@ function App() {
       const result: ApiResponse = await response.json();
 
       if (result?.data?.products?.length === 1) {
-        window.location.href = `https://www.bureauengros.com${result.data.products[0].productUrl}`;
+        const productUrl = result.data.products[0].productUrl;
+        window.location.href = `https://www.bureauengros.com${productUrl}`;
       } else {
         window.location.href = fallbackUrl;
       }
@@ -43,12 +46,13 @@ function App() {
       console.error("API call failed, falling back to search page", err);
       window.location.href = fallbackUrl;
     }
-  }, []);
+  }, [isLoading]);
 
   const handleOcrScan = async () => {
     if (!videoRef.current) return;
 
-    setLoadingState(true, 'Analyse du texte...');
+    setLoadingMessage('Analyse du texte...');
+    setIsLoading(true);
 
     const canvas = document.createElement('canvas');
     canvas.width = videoRef.current.videoWidth;
@@ -57,7 +61,6 @@ function App() {
     context?.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
 
     const { data: { text } } = await Tesseract.recognize(canvas, 'fra');
-    console.log('OCR Result:', text); // For debugging
     const lines = text.split('\n');
     let foundCode = '';
 
@@ -67,7 +70,7 @@ function App() {
         foundCode = ugsMatch[1].split('-')[0];
         break;
       }
-      const modeleMatch = line.match(/Mod.le\s*([\w\d/-]+)/i);
+      const modeleMatch = line.match(/Mod.le\s*([\w\d/]+)/i);
       if (modeleMatch && modeleMatch[1]) {
         foundCode = modeleMatch[1];
         break;
@@ -78,45 +81,42 @@ function App() {
       searchProduct(foundCode);
     } else {
       setError('Aucun code UGS ou Modèle trouvé.');
-      setLoadingState(false);
+      setIsLoading(false);
     }
   };
 
   useEffect(() => {
-    if (!scannerRef.current) return;
-
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const onDetected = (result: any) => {
-      if (result.codeResult.code && !isLoadingRef.current) {
-        searchProduct(result.codeResult.code);
-      }
+      if (result.codeResult.code) searchProduct(result.codeResult.code);
     };
 
-    Quagga.init({
-      inputStream: {
-        name: "Live",
-        type: "LiveStream",
-        target: scannerRef.current,
-        constraints: { width: 480, height: 320, facingMode: "environment" },
-      },
-      decoder: { readers: ['ean_reader', 'upc_reader', 'code_128_reader'] }
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    }, (err: any) => {
-      if (err) {
-        setError('Erreur: Impossible d\'accéder à la caméra.');
-        return;
-      }
-      Quagga.start();
-      videoRef.current = scannerRef.current?.querySelector('video') || null;
-    });
-
-    Quagga.onDetected(onDetected);
-
-    return () => {
-      Quagga.offDetected(onDetected);
-      Quagga.stop();
-    };
-  }, [searchProduct]);
+    if (scannerRef.current && !isLoading) {
+      Quagga.init({
+        inputStream: {
+          name: "Live",
+          type: "LiveStream",
+          target: scannerRef.current,
+          constraints: { width: 480, height: 320, facingMode: "environment" },
+        },
+        decoder: { readers: ['ean_reader', 'upc_reader', 'code_128_reader'] }
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      }, (err: any) => {
+        if (err) {
+          setError('Erreur: Impossible d\'accéder à la caméra.');
+          return;
+        }
+        Quagga.start();
+        // Fix for lint error: ensure the value is not undefined
+        videoRef.current = scannerRef.current?.querySelector('video') || null;
+      });
+      Quagga.onDetected(onDetected);
+      return () => {
+        Quagga.offDetected(onDetected);
+        Quagga.stop();
+      };
+    }
+  }, [isLoading, searchProduct]);
 
   return (
     <div className="App">
