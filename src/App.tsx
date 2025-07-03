@@ -27,6 +27,7 @@ function App() {
 
     setLoadingMessage('Recherche du produit...');
     setIsLoading(true);
+    setError('');
 
     const fallbackUrl = `https://www.bureauengros.com/search?q=${code}`;
     const apiUrl = `https://www.bureauengros.com/proxy/product-search/v2/products/search?q=${code}&lang=fr`;
@@ -53,6 +54,7 @@ function App() {
 
     setLoadingMessage('Analyse du texte...');
     setIsLoading(true);
+    setError('');
 
     const canvas = document.createElement('canvas');
     canvas.width = videoRef.current.videoWidth;
@@ -60,38 +62,45 @@ function App() {
     const context = canvas.getContext('2d');
     context?.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
 
-    const { data: { text } } = await Tesseract.recognize(canvas, 'fra');
-    const lines = text.split('\n');
-    let foundCode = '';
-
-    for (const line of lines) {
-      const ugsMatch = line.match(/UGS\s*([\d-]+)/i);
+    try {
+      const { data: { text } } = await Tesseract.recognize(canvas, 'fra');
+      let foundCode = '';
+      const ugsMatch = text.match(/UGS\s*([\d-]+)/i);
       if (ugsMatch && ugsMatch[1]) {
-        foundCode = ugsMatch[1].split('-')[0];
-        break;
+        foundCode = ugsMatch[1].replace(/-/g, '');
+      } else {
+        const modeleMatch = text.match(/Mod.le\s*([\w\d/]+)/i);
+        if (modeleMatch && modeleMatch[1]) {
+          foundCode = modeleMatch[1];
+        }
       }
-      const modeleMatch = line.match(/Mod.le\s*([\w\d/]+)/i);
-      if (modeleMatch && modeleMatch[1]) {
-        foundCode = modeleMatch[1];
-        break;
-      }
-    }
 
-    if (foundCode) {
-      searchProduct(foundCode);
-    } else {
-      setError('Aucun code UGS ou Modèle trouvé.');
+      if (foundCode) {
+        searchProduct(foundCode);
+      } else {
+        setError('Aucun code UGS ou Modèle trouvé.');
+        setIsLoading(false);
+      }
+    } catch (err) {
+      console.error('OCR Error:', err);
+      setError('Erreur lors de l\'analyse du texte.');
       setIsLoading(false);
     }
   };
 
   useEffect(() => {
+    if (isLoading) {
+      Quagga.stop();
+      return;
+    }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const onDetected = (result: any) => {
-      if (result.codeResult.code) searchProduct(result.codeResult.code);
+      if (result.codeResult.code) {
+        searchProduct(result.codeResult.code);
+      }
     };
 
-    if (scannerRef.current && !isLoading) {
+    if (scannerRef.current) {
       Quagga.init({
         inputStream: {
           name: "Live",
@@ -100,14 +109,13 @@ function App() {
           constraints: { width: 480, height: 320, facingMode: "environment" },
         },
         decoder: { readers: ['ean_reader', 'upc_reader', 'code_128_reader'] }
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       }, (err: any) => {
         if (err) {
-          setError('Erreur: Impossible d\'accéder à la caméra.');
+          if (!error) setError('Erreur: Impossible d\'accéder à la caméra.');
           return;
         }
         Quagga.start();
-        // Fix for lint error: ensure the value is not undefined
         videoRef.current = scannerRef.current?.querySelector('video') || null;
       });
       Quagga.onDetected(onDetected);
@@ -116,7 +124,7 @@ function App() {
         Quagga.stop();
       };
     }
-  }, [isLoading, searchProduct]);
+  }, [isLoading, searchProduct, error]);
 
   return (
     <div className="App">
@@ -130,14 +138,15 @@ function App() {
             <div ref={scannerRef} className="scanner-container"></div>
             {error && <p className="error-message">{error}</p>}
             <div className="manual-search">
-              <button onClick={handleOcrScan}>Scanner Texte</button>
+              <button onClick={handleOcrScan} disabled={isLoading}>Scanner Texte</button>
               <input 
                 type="text" 
                 value={manualCode} 
                 onChange={(e) => setManualCode(e.target.value)} 
                 placeholder="Entrez un code"
+                disabled={isLoading}
               />
-              <button onClick={() => searchProduct(manualCode)}>Rechercher</button>
+              <button onClick={() => searchProduct(manualCode)} disabled={isLoading}>Rechercher</button>
             </div>
           </>
         )}
