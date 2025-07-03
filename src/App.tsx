@@ -118,6 +118,19 @@ function App() {
     }
   }, [isLoading, searchProduct]);
 
+  // Reset loading state on browser back navigation
+  useEffect(() => {
+    const handlePageShow = () => {
+      // This ensures that if the user navigates back, the loading screen is dismissed.
+      setIsLoading(false);
+    };
+
+    window.addEventListener('pageshow', handlePageShow);
+    return () => {
+      window.removeEventListener('pageshow', handlePageShow);
+    };
+  }, []);
+
   return (
     <div className="App">
       <div className="container">
