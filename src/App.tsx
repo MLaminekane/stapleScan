@@ -1,4 +1,5 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import type { JSX } from 'react';
 import Quagga from 'quagga';
 import Tesseract from 'tesseract.js';
 import './App.css';
@@ -28,7 +29,7 @@ interface PotentialCode {
   priority: number;
 }
 
-function App(): JSX.Element {
+const App: React.FC = (): JSX.Element => {
   const [manualCode, setManualCode] = useState<string>('');
   const [error, setError] = useState<string>('');
   const [isLoading, setIsLoading] = useState<boolean>(false);
@@ -383,6 +384,6 @@ function App(): JSX.Element {
       </div>
     </div>
   );
-}
+};
 
 export default App;
