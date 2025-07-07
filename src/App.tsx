@@ -97,9 +97,29 @@ function App() {
           name: "Live",
           type: "LiveStream",
           target: scannerRef.current,
-          constraints: { width: 480, height: 320, facingMode: "environment" },
+          constraints: {
+            width: { ideal: 1920 },
+            height: { ideal: 1080 },
+            facingMode: "environment",
+            advanced: [
+              { zoom: { ideal: 1.5 } },
+              { focusMode: "continuous" },
+              { focusDistance: { ideal: 0.1 } }
+            ]
+          },
         },
-        decoder: { readers: ['ean_reader', 'upc_reader', 'code_128_reader'] }
+        decoder: {
+          readers: ['ean_reader', 'upc_reader', 'code_128_reader'],
+          debug: {
+            drawBoundingBox: true,
+            showFrequency: true,
+            drawScanline: true,
+            showPattern: true
+          }
+        },
+        locate: true,
+        numOfWorkers: navigator.hardwareConcurrency || 4,
+        frequency: 10
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
       }, (err: any) => {
         if (err) {
