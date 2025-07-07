@@ -86,48 +86,6 @@ function App() {
     };
   }
 
-  const processTextDetection = async () => {
-    const canvas = document.createElement('canvas');
-    canvas.width = videoRef.current!.videoWidth * 2;
-    canvas.height = videoRef.current!.videoHeight * 2;
-    const context = canvas.getContext('2d', { willReadFrequently: true });
-    if (!context) throw new Error('Impossible d\'initialiser le contexte graphique');
-    context.drawImage(videoRef.current!, 0, 0, canvas.width, canvas.height);
-    enhanceImage(context, canvas.width, canvas.height);
-
-    const { data: { text } } = await Tesseract.recognize(
-      canvas,
-      'eng',
-      { logger: m => console.log(m) }
-    );
-    console.log('Texte OCR détecté :', text);
-    const rawLines = text.split(/\n+/).map(l => l.trim()).filter(Boolean);
-    // 1. Chercher la ligne UGS
-    for (const line of rawLines) {
-      const ugs = line.match(/UGS\s*([\d-]+)/i);
-      if (ugs && ugs[1]) {
-        const code = ugs[1].replace(/-/g, '');
-        if (code.length >= 5) {
-          console.log('UGS extrait:', code);
-          return code;
-        }
-      }
-    }
-    // 2. Chercher la ligne Modèle
-    for (const line of rawLines) {
-      const modele = line.match(/Mod[èe]le\s*([\w\d]+)/i);
-      if (modele && modele[1]) {
-        const code = modele[1];
-        if (code.length >= 4) {
-          console.log('Modèle extrait:', code);
-          return code;
-        }
-      }
-    }
-    // 3. Sinon, rien (pas de fallback sur les chiffres seuls pour éviter les dates)
-    return null;
-  };
-
   const handleOcrScan = async () => {
     if (!videoRef.current) return;
 
@@ -135,7 +93,70 @@ function App() {
     setIsLoading(true);
     setError('');
 
-w\d-]/g, '');
+    const processTextDetection = async () => {
+      const canvas = document.createElement('canvas');
+      // Augmenter la taille du canvas pour une meilleure précision
+      canvas.width = videoRef.current!.videoWidth * 2;
+      canvas.height = videoRef.current!.videoHeight * 2;
+      const context = canvas.getContext('2d', { willReadFrequently: true });
+      
+      if (!context) {
+        throw new Error('Impossible d\'initialiser le contexte graphique');
+      }
+
+      // Dessiner l'image en haute résolution
+      context.drawImage(videoRef.current!, 0, 0, canvas.width, canvas.height);
+      
+      // Améliorer le contraste et la netteté
+      enhanceImage(context, canvas.width, canvas.height);
+
+      // Détection du texte avec Tesseract
+      const { data: { text } } = await Tesseract.recognize(
+        canvas,
+        'eng', // Utiliser uniquement l'anglais pour les codes
+        { 
+          logger: m => console.log(m)
+        }
+      );
+
+      console.log('Texte détecté:', text);
+      
+      // Extraire les mots avec leurs positions
+      const detectedWords: DetectedWord[] = [];
+      const lines = text.split(/\n+/);
+      
+      lines.forEach((line) => {
+        const wordsInLine = line.split(/\s+/);
+        wordsInLine.forEach(word => {
+          const trimmedWord = word.trim();
+          if (trimmedWord.length >= 4) { // Ignorer les mots trop courts
+            detectedWords.push({
+              text: trimmedWord,
+              confidence: 80, // Estimation
+              bbox: { x0: 0, y0: 0, x1: 0, y1: 0 } // Non utilisé pour le moment
+            });
+          }
+        });
+      });
+
+      console.log('Mots détectés:', detectedWords);
+      
+      // Filtrer et trier les mots détectés
+      const potentialCodes = detectedWords
+        .filter((word) => {
+          const cleanText = word.text.replace(/[^\w\d-]/g, '');
+          return (
+            cleanText.length >= 4 && // Au moins 4 caractères
+            /[0-9]/.test(cleanText) // Doit contenir au moins un chiffre
+          );
+        })
+        .sort((a, b) => b.text.length - a.text.length); // Trier par longueur décroissante
+
+      console.log('Codes potentiels:', potentialCodes);
+      
+      // Chercher en priorité les UGS avec le format exact
+      const ugsMatch = potentialCodes.find((word) => {
+        const cleanText = word.text.replace(/[^\w\d-]/g, '');
         // Vérifier le format UGS suivi de chiffres
         if (/^UGS[^\d]*(\d[\d-]*\d?)$/i.test(cleanText)) {
           // S'assurer qu'il y a au moins 4 chiffres après UGS
