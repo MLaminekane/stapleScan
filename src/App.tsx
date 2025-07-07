@@ -3,7 +3,6 @@ import Quagga from 'quagga';
 import Tesseract from 'tesseract.js';
 import './App.css';
 
-// Define types for the API response to avoid using 'any'
 interface Product {
   productUrl: string;
 }
@@ -15,10 +14,10 @@ interface ApiResponse {
 }
 
 function App() {
-  const [manualCode, setManualCode] = useState('');
-  const [error, setError] = useState('');
+  const [manualCode, setManualCode] = useState<string>('');
+  const [error, setError] = useState<string>('');
   const [isLoading, setIsLoading] = useState(false);
-  const [loadingMessage, setLoadingMessage] = useState('Recherche en cours...');
+  const [loadingMessage, setLoadingMessage] = useState<string>('Recherche en cours...');
   const scannerRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
 
@@ -49,24 +48,19 @@ function App() {
   }, [isLoading]);
 
   const enhanceImage = (context: CanvasRenderingContext2D, width: number, height: number) => {
-    // Amélioration du contraste et de la netteté
     const imageData = context.getImageData(0, 0, width, height);
     const data = imageData.data;
     
-    // Augmentation du contraste
     const contrast = 1.5;
     const factor = (259 * (contrast + 255)) / (255 * (259 - contrast));
     
     for (let i = 0; i < data.length; i += 4) {
-      // Conversion en niveaux de gris
       const gray = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
       
-      // Application du contraste
-      data[i] = factor * (gray - 128) + 128;     // R
-      data[i + 1] = factor * (gray - 128) + 128; // G
-      data[i + 2] = factor * (gray - 128) + 128; // B
+      data[i] = factor * (gray - 128) + 128;
+      data[i + 1] = factor * (gray - 128) + 128;
+      data[i + 2] = factor * (gray - 128) + 128;
       
-      // Seuillage pour rendre le texte plus net
       const threshold = 128;
       const value = gray > threshold ? 255 : 0;
       data[i] = data[i + 1] = data[i + 2] = value;
@@ -86,102 +80,7 @@ function App() {
     };
   }
 
-  // Fonction pour détecter si un texte est une date
-  const isDate = (text: string): boolean => {
-    const cleanText = text.replace(/[^\d\/\-\.]/g, '');
-    
-    // Patterns de dates courants
-    const datePatterns = [
-      /^\d{1,2}\/\d{1,2}\/\d{2,4}$/,    // 01/01/2024
-      /^\d{1,2}-\d{1,2}-\d{2,4}$/,      // 01-01-2024
-      /^\d{1,2}\.\d{1,2}\.\d{2,4}$/,    // 01.01.2024
-      /^\d{2,4}\/\d{1,2}\/\d{1,2}$/,    // 2024/01/01
-      /^\d{2,4}-\d{1,2}-\d{1,2}$/,      // 2024-01-01
-      /^\d{2,4}\.\d{1,2}\.\d{1,2}$/,    // 2024.01.01
-      /^\d{8}$/,                         // 20240101
-      /^\d{6}$/                          // 240101
-    ];
-    
-    return datePatterns.some(pattern => pattern.test(cleanText));
-  };
-
-  // Fonction pour nettoyer et valider un code UGS
-  const cleanUgsCode = (text: string): string | null => {
-    // Rechercher le pattern UGS suivi de chiffres
-    const ugsMatch = text.match(/UGS[^\d]*(\d+)/i);
-    if (ugsMatch) {
-      const digits = ugsMatch[1].replace(/\D/g, ''); // Garder seulement les chiffres
-      return digits.length >= 4 ? digits : null;
-    }
-    return null;
-  };
-
-  // Fonction pour valider un code produit
-  const isValidProductCode = (text: string): boolean => {
-    const cleanText = text.replace(/[^\w\d-]/g, '');
-    
-    // Rejeter si c'est une date
-    if (isDate(text)) return false;
-    
-    // Rejeter si c'est trop court
-    if (cleanText.length < 4) return false;
-    
-    // Rejeter si c'est uniquement des lettres
-    if (!/\d/.test(cleanText)) return false;
-    
-    // Rejeter les patterns de prix (ex: 19.99, $19.99)
-    if (/^\$?\d+[\.,]\d{2}$/.test(cleanText)) return false;
-    
-    // Rejeter les numéros de téléphone
-    if (/^\d{3}[-\s]?\d{3}[-\s]?\d{4}$/.test(cleanText)) return false;
-    
-    // Rejeter les codes postaux
-    if (/^[A-Z]\d[A-Z]\s?\d[A-Z]\d$/i.test(cleanText)) return false;
-    
-    // Accepter les codes qui ont au moins 4 chiffres ou un bon format
-    const digitCount = (cleanText.match(/\d/g) || []).length;
-    return digitCount >= 4 || /^[A-Z]{1,3}\d{4,}$/i.test(cleanText);
-  };
-
-  // Fonction pour calculer la priorité d'un code
-  const getCodePriority = (text: string): number => {
-    let priority = 0;
-    const cleanText = text.replace(/[^\w\d-]/g, '');
-    
-    // Priorité maximale pour les codes UGS
-    if (/^UGS/i.test(text)) {
-      priority += 1000;
-    }
-    
-    // Priorité élevée pour les codes avec format produit typique
-    if (/^\d{6,}$/.test(cleanText)) {
-      priority += 500; // Codes purement numériques de 6+ chiffres
-    }
-    
-    if (/^[A-Z]{1,3}\d{4,}$/i.test(cleanText)) {
-      priority += 400; // Format lettre(s) + chiffres
-    }
-    
-    if (/^\d{4,5}$/.test(cleanText)) {
-      priority += 300; // Codes de 4-5 chiffres
-    }
-    
-    // Bonus pour la longueur (codes plus longs souvent plus spécifiques)
-    if (cleanText.length >= 6) priority += 100;
-    if (cleanText.length >= 8) priority += 50;
-    
-    // Bonus pour les chiffres
-    const digitCount = (cleanText.match(/\d/g) || []).length;
-    priority += digitCount * 10;
-    
-    // Malus pour les caractères spéciaux
-    const specialChars = cleanText.replace(/[A-Z0-9]/gi, '').length;
-    priority -= specialChars * 20;
-    
-    return priority;
-  };
-
-  const handleOcrScan = async () => {
+  const handleOcrScan = useCallback(async () => {
     if (!videoRef.current) return;
 
     setLoadingMessage('Analyse précise en cours...');
@@ -190,7 +89,6 @@ function App() {
 
     const processTextDetection = async () => {
       const canvas = document.createElement('canvas');
-      // Augmenter la taille du canvas pour une meilleure précision
       canvas.width = videoRef.current!.videoWidth * 2;
       canvas.height = videoRef.current!.videoHeight * 2;
       const context = canvas.getContext('2d', { willReadFrequently: true });
@@ -199,64 +97,82 @@ function App() {
         throw new Error('Impossible d\'initialiser le contexte graphique');
       }
 
-      // Dessiner l'image en haute résolution
       context.drawImage(videoRef.current!, 0, 0, canvas.width, canvas.height);
-      
-      // Améliorer le contraste et la netteté
       enhanceImage(context, canvas.width, canvas.height);
 
-      // Détection du texte avec Tesseract
       const { data: { text } } = await Tesseract.recognize(
         canvas,
-        'eng', // Utiliser uniquement l'anglais pour les codes
-        { 
-          logger: m => console.log(m)
-        }
+        'eng+fra',
+        { logger: m => console.log(m) }
       );
 
       console.log('Texte détecté:', text);
       
-      // Extraire tous les mots du texte
-      const allWords = text.split(/[\s\n\r]+/)
-        .map(word => word.trim())
-        .filter(word => word.length > 0);
+      // 1. Recherche prioritaire des UGS (format: UGS XXXXXXX)
+      const ugsRegex = /UGS\s*[:-]?\s*(\d+)[^\d]*/i;
+      const ugsMatch = ugsRegex.exec(text);
+      if (ugsMatch && ugsMatch[1]) {
+        const ugsCode = ugsMatch[1];
+        console.log('UGS trouvé:', ugsCode);
+        return ugsCode;
+      }
 
-      console.log('Tous les mots:', allWords);
-      
-      // Filtrer et évaluer les codes potentiels
-      const potentialCodes = allWords
-        .filter(word => isValidProductCode(word))
-        .map(word => ({
-          text: word,
-          cleanText: word.replace(/[^\w\d-]/g, ''),
-          priority: getCodePriority(word)
-        }))
-        .sort((a, b) => b.priority - a.priority);
+      // 2. Recherche des modèles (format: Modèle XXXXXXX)
+      const modeleRegex = /Mod[eè]le\s*[:-]?\s*(\w[\w\d-]+)/i;
+      const modeleMatch = modeleRegex.exec(text);
+      if (modeleMatch && modeleMatch[1]) {
+        const modeleCode = modeleMatch[1].replace(/[^\w\d-]/g, '');
+        console.log('Modèle trouvé:', modeleCode);
+        return modeleCode;
+      }
 
-      console.log('Codes potentiels avec priorité:', potentialCodes);
+      // 3. Recherche de codes produits typiques (séries de chiffres)
+      const codeRegex = /(\d{5,})|([A-Z0-9]{6,})/g;
+      const codeMatches = [];
+      let match;
       
-      // Vérifier d'abord les codes UGS
-      for (const code of potentialCodes) {
-        const ugsCode = cleanUgsCode(code.text);
-        if (ugsCode) {
-          console.log('Code UGS trouvé:', ugsCode);
-          return ugsCode;
+      while ((match = codeRegex.exec(text)) !== null) {
+        const cleanCode = match[0].replace(/[^\w\d]/g, '');
+        if (cleanCode.length >= 5) {
+          codeMatches.push(cleanCode);
         }
       }
       
-      // Ensuite prendre le code avec la plus haute priorité
+      if (codeMatches.length > 0) {
+        // Tri par longueur décroissante
+        const bestMatch = codeMatches.reduce((a, b) => a.length > b.length ? a : b);
+        console.log('Code produit trouvé:', bestMatch);
+        return bestMatch;
+      }
+
+      // 4. Ancienne méthode de secours
+      console.warn("Aucun motif spécifique trouvé, utilisation de l'ancienne méthode");
+      const lines = text.split(/\n+/);
+      const detectedWords: DetectedWord[] = [];
+      
+      lines.forEach((line) => {
+        const wordsInLine = line.split(/\s+/);
+        wordsInLine.forEach(word => {
+          const trimmedWord = word.trim();
+          if (trimmedWord.length >= 4) {
+            detectedWords.push({
+              text: trimmedWord,
+              confidence: 80,
+              bbox: { x0: 0, y0: 0, x1: 0, y1: 0 }
+            });
+          }
+        });
+      });
+
+      const potentialCodes = detectedWords
+        .filter(word => {
+          const cleanText = word.text.replace(/[^\w\d-]/g, '');
+          return cleanText.length >= 4 && /[0-9]/.test(cleanText);
+        })
+        .sort((a, b) => b.text.length - a.text.length);
+
       if (potentialCodes.length > 0) {
-        const bestCode = potentialCodes[0];
-        // Nettoyer le code en gardant seulement les chiffres pour les codes purement numériques
-        let finalCode = bestCode.cleanText;
-        
-        // Si c'est un code purement numérique, garder seulement les chiffres
-        if (/^\d+[-\s]*\d*$/.test(finalCode)) {
-          finalCode = finalCode.replace(/\D/g, '');
-        }
-        
-        console.log('Meilleur code trouvé:', finalCode);
-        return finalCode;
+        return potentialCodes[0].text.replace(/[^\w\d-]/g, '');
       }
       
       return null;
@@ -268,7 +184,7 @@ function App() {
       if (foundCode) {
         searchProduct(foundCode);
       } else {
-        setError('Aucun code produit valide détecté. Assurez-vous que le code UGS ou modèle est bien visible.');
+        setError('Aucun code valide détecté. Essayez de mieux cadrer le code.');
         setIsLoading(false);
       }
     } catch (error) {
@@ -276,60 +192,84 @@ function App() {
       setError('Erreur lors de l\'analyse du texte. Veuillez réessayer.');
       setIsLoading(false);
     }
-  };
+  }, [searchProduct]);
+
+  // Suppression de onDetected non utilisé car remplacé par handleQuaggaDetected
 
   useEffect(() => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const onDetected = (result: any) => {
-      if (result.codeResult.code) searchProduct(result.codeResult.code);
+    if (!scannerRef.current || isLoading) return;
+    
+    let quaggaInitialized = false;
+    
+    const handleQuaggaError = (error: Error) => {
+      console.error('Erreur Quagga:', error);
+      setError('Erreur lors de l\'initialisation du scanner. Veuillez recharger la page.');
+    };
+    
+    const handleQuaggaDetected = (result: { codeResult: { code: string } }) => {
+      if (result?.codeResult?.code) {
+        searchProduct(result.codeResult.code);
+      }
+    };
+    const initQuagga = async () => {
+      try {
+        await new Promise<void>((resolve, reject) => {
+          Quagga.init({
+            inputStream: {
+              name: "Live",
+              type: "LiveStream",
+              target: scannerRef.current!,
+              constraints: {
+                width: { ideal: 1920 },
+                height: { ideal: 1080 },
+                facingMode: "environment",
+                advanced: [
+                  { zoom: { ideal: 1.5 } },
+                  { focusMode: "continuous" },
+                  { focusDistance: { ideal: 0.1 } }
+                ]
+              },
+            },
+            decoder: {
+              readers: ['ean_reader', 'upc_reader', 'code_128_reader'],
+              debug: {
+                drawBoundingBox: true,
+                showFrequency: true,
+                drawScanline: true,
+                showPattern: true
+              }
+            },
+            locate: true,
+            numOfWorkers: Math.min(navigator.hardwareConcurrency || 4, 4),
+            frequency: 10
+          }, (err: Error | null) => {
+            if (err) {
+              reject(err);
+              return;
+            }
+            quaggaInitialized = true;
+            Quagga.start();
+            videoRef.current = scannerRef.current?.querySelector('video') || null;
+            resolve();
+          });
+        });
+        
+        Quagga.onDetected(handleQuaggaDetected);
+      } catch (error) {
+        handleQuaggaError(error instanceof Error ? error : new Error(String(error)));
+      }
     };
 
-    if (scannerRef.current && !isLoading) {
-      Quagga.init({
-        inputStream: {
-          name: "Live",
-          type: "LiveStream",
-          target: scannerRef.current,
-          constraints: {
-            width: { ideal: 1920 },
-            height: { ideal: 1080 },
-            facingMode: "environment",
-            advanced: [
-              { zoom: { ideal: 1.5 } },
-              { focusMode: "continuous" },
-              { focusDistance: { ideal: 0.1 } }
-            ]
-          },
-        },
-        decoder: {
-          readers: ['ean_reader', 'upc_reader', 'code_128_reader'],
-          debug: {
-            drawBoundingBox: true,
-            showFrequency: true,
-            drawScanline: true,
-            showPattern: true
-          }
-        },
-        locate: true,
-        numOfWorkers: navigator.hardwareConcurrency || 4,
-        frequency: 10
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      }, (err: any) => {
-        if (err) {
-          setError('Erreur: Impossible d\'accéder à la caméra.');
-          return;
-        }
-        Quagga.start();
-        // Fix for lint error: ensure the value is not undefined
-        videoRef.current = scannerRef.current?.querySelector('video') || null;
-      });
-      Quagga.onDetected(onDetected);
-      return () => {
-        Quagga.offDetected(onDetected);
+    initQuagga();
+
+    return () => {
+      if (quaggaInitialized) {
+        Quagga.offDetected(handleQuaggaDetected);
         Quagga.stop();
-      };
-    }
+      }
+    };
   }, [isLoading, searchProduct]);
+
 
   return (
     <div className="App">
@@ -340,17 +280,29 @@ function App() {
           <>
             <h1>Scanneur de Produits</h1>
             <p>Pointez la caméra sur un code-barre ou un texte.</p>
-            <div ref={scannerRef} className="scanner-container"></div>
-            {error && <p className="error-message">{error}</p>}
+            <div className="scanner-container">
+              {error && <p className="error-message">{error}</p>}
+            </div>
             <div className="manual-search">
-              <button onClick={handleOcrScan}>Scanner Texte</button>
-              <input 
-                type="text" 
-                value={manualCode} 
-                onChange={(e) => setManualCode(e.target.value)} 
-                placeholder="Entrez sku ou upc"
-              />
-              <button onClick={() => searchProduct(manualCode)}>Rechercher</button>
+              <button onClick={handleOcrScan} disabled={isLoading}>
+                {isLoading ? 'Analyse en cours...' : 'Scanner Texte'}
+              </button>
+              <div className="search-box">
+                <input 
+                  type="text" 
+                  value={manualCode} 
+                  onChange={(e) => setManualCode(e.target.value)} 
+                  placeholder="Entrez sku ou upc"
+                  onKeyPress={(e) => e.key === 'Enter' && manualCode.trim() && searchProduct(manualCode.trim())}
+                  disabled={isLoading}
+                />
+                <button 
+                  onClick={() => searchProduct(manualCode.trim())}
+                  disabled={!manualCode.trim() || isLoading}
+                >
+                  {isLoading ? 'Recherche...' : 'Rechercher'}
+                </button>
+              </div>
             </div>
           </>
         )}
