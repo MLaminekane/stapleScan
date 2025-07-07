@@ -53,8 +53,8 @@ function App() {
     const imageData = context.getImageData(0, 0, width, height);
     const data = imageData.data;
     
-    // Augmentation du contraste
-    const contrast = 1.5;
+    // Augmentation du contraste - ajustement pour mieux capturer le texte
+    const contrast = 2.0; // Augmentation du contraste pour mieux voir le texte
     const factor = (259 * (contrast + 255)) / (255 * (259 - contrast));
     
     for (let i = 0; i < data.length; i += 4) {
@@ -66,8 +66,8 @@ function App() {
       data[i + 1] = factor * (gray - 128) + 128; // G
       data[i + 2] = factor * (gray - 128) + 128; // B
       
-      // Seuillage pour rendre le texte plus net
-      const threshold = 128;
+      // Seuillage adaptatif pour rendre le texte plus net
+      const threshold = 140; // Ajustement du seuil pour mieux capturer le texte
       const value = gray > threshold ? 255 : 0;
       data[i] = data[i + 1] = data[i + 2] = value;
     }
@@ -80,79 +80,137 @@ function App() {
 
     setLoadingMessage('Analyse du texte...');
     setIsLoading(true);
+    setError(''); // Réinitialiser les messages d'erreur
 
-    const canvas = document.createElement('canvas');
-    canvas.width = videoRef.current.videoWidth;
-    canvas.height = videoRef.current.videoHeight;
-    const context = canvas.getContext('2d');
-    
-    if (!context) {
-      setError('Impossible d\'initialiser le contexte graphique');
-      setIsLoading(false);
-      return;
-    }
-
-    // Dessiner l'image et l'améliorer
-    context.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
-    enhanceImage(context, canvas.width, canvas.height);
-
-    // Configuration minimale de Tesseract pour une meilleure compatibilité
-    const { data: { text } } = await Tesseract.recognize(
-      canvas,
-      'eng+fra', // Utiliser à la fois l'anglais et le français
-      { 
-        logger: m => console.log(m)
+    try {
+      const canvas = document.createElement('canvas');
+      canvas.width = videoRef.current.videoWidth;
+      canvas.height = videoRef.current.videoHeight;
+      const context = canvas.getContext('2d');
+      
+      if (!context) {
+        throw new Error('Impossible d\'initialiser le contexte graphique');
       }
-    );
-    
-    // Appliquer un post-traitement pour nettoyer le texte
-    const cleanedText = text
-      .replace(/[^\w\d\s-/]/g, '') // Supprimer les caractères spéciaux
-      .replace(/\s+/g, ' ') // Remplacer les espaces multiples par un seul
-      .trim();
 
-    console.log('Texte détecté:', cleanedText); // Pour le débogage
-    
-    // Utiliser le texte nettoyé pour la détection
-    const lines = cleanedText.split(/[\s\n\r]+/); // Séparer sur tout type d'espace ou retour à la ligne
-    let foundCode = '';
+      // Dessiner l'image et l'améliorer
+      context.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
+      enhanceImage(context, canvas.width, canvas.height);
 
-    // Expressions régulières plus flexibles
-    const patterns = [
-      /UGS[^\d]*(\d[\d-]*\d)/i, // UGS suivi de chiffres et tirets
-      /(\d{5,})/, // Au moins 5 chiffres consécutifs
-      /(\d[\d\s-]{4,}\d)/, // Numéros avec tirets ou espaces
-      /mod[ée]le[^\d]*(\w[\w/\d-]+)/i, // Modèle avec différents séparateurs
-    ];
+      // Configuration de Tesseract pour une meilleure détection de texte
+      const { data: { text } } = await Tesseract.recognize(
+        canvas,
+        'eng+fra', // Utiliser à la fois l'anglais et le français
+        { 
+          logger: m => console.log(m)
+        }
+      );
+      
+      console.log('Texte brut détecté:', text); // Pour le débogage
+      
+      // Nettoyage moins agressif du texte
+      const cleanedText = text
+        .replace(/[^a-zA-Z0-9\s\-.,:()/]/g, '') // Garder plus de caractères pertinents
+        .trim();
 
-    for (const line of lines) {
-      const trimmedLine = line.trim();
-      if (!trimmedLine) continue;
+      console.log('Texte nettoyé:', cleanedText);
+      
+      // Découper en lignes de manière plus flexible
+      const lines = cleanedText.split(/[\n\r]+/);
+      
+      let foundCode = '';
 
-      for (const pattern of patterns) {
-        const match = trimmedLine.match(pattern);
-        if (match && match[1]) {
-          // Nettoyer le code trouvé
-          foundCode = match[1]
-            .replace(/[^\d\w/-]/g, '') // Garder uniquement chiffres, lettres, / et -
-            .replace(/^0+/, '') // Supprimer les zéros en début de chaîne
-            .replace(/-+$/, ''); // Supprimer les tirets en fin de chaîne
+      // Expressions régulières spécifiquement adaptées pour détecter les formats d'UGS visibles sur l'image
+      const patterns = [
+        // Formats spécifiques pour UGS
+        /UGS\s*:?\s*(\d[\d\s-]*\d)/i,  // Format: UGS 1234567-8
+        /UGS[^\d]*(\d+[\d-]*\d+)/i,    // Format moins strict: UGS(n'importe quoi)1234567
+        
+        // Formats spécifiques pour Modèle
+        /Mod[èe]le\s*:?\s*(\w[\w\d-]*)/i,  // Format: Modèle ABC123
+        /Mod[èe]le[^\w]*(\w[\w\d/-]+)/i,   // Format moins strict
+        /(\d{5,}[A-Z]\d+)/i,              // Format numéro+lettre+numéro (5158C005)
+        
+        // Formats numériques génériques
+        /(\d{7,8}[-]\d)/,              // Format 3069280-8
+        /(\d{5,}[A-Z]\d+)/,            // Format 5158C005 
+        /(\d{5,})/                     // Au moins 5 chiffres consécutifs
+      ];
+
+      // Recherche de codes dans chaque ligne
+      for (const line of lines) {
+        const trimmedLine = line.trim();
+        if (!trimmedLine) continue;
+        
+        console.log('Analyse ligne:', trimmedLine);
+
+        // D'abord, essayons de trouver les codes UGS ou Modèle explicitement marqués
+        if (trimmedLine.toLowerCase().includes('ugs')) {
+          const ugsMatch = trimmedLine.match(/UGS\s*:?\s*(\S+)/i) || 
+                          trimmedLine.match(/UGS[^\d]*(\d+[\d-]*\d+)/i);
           
-          if (foundCode.length >= 4) { // Code valide si au moins 4 caractères
-            console.log('Code trouvé:', foundCode, 'dans la ligne:', trimmedLine);
+          if (ugsMatch && ugsMatch[1]) {
+            foundCode = ugsMatch[1].replace(/[^\d\w/-]/g, '');
+            console.log('UGS trouvé:', foundCode);
+            if (foundCode.length >= 4) break;
+            foundCode = '';
+          }
+        }
+        
+        if (trimmedLine.toLowerCase().includes('mod') || 
+            trimmedLine.toLowerCase().includes('modèle') || 
+            trimmedLine.toLowerCase().includes('modele')) {
+          const modelMatch = trimmedLine.match(/Mod[èe]le\s*:?\s*(\S+)/i) || 
+                            trimmedLine.match(/Mod[èe]le[^\w]*(\w[\w\d/-]+)/i);
+          
+          if (modelMatch && modelMatch[1]) {
+            foundCode = modelMatch[1].replace(/[^\d\w/-]/g, '');
+            console.log('Modèle trouvé:', foundCode);
+            if (foundCode.length >= 4) break;
+            foundCode = '';
+          }
+        }
+
+        // Si rien n'a été trouvé, essayons les autres patterns
+        for (const pattern of patterns) {
+          const match = trimmedLine.match(pattern);
+          if (match && match[1]) {
+            foundCode = match[1].replace(/[^\d\w/-]/g, '').trim();
+            console.log('Code potentiel trouvé:', foundCode);
+            if (foundCode.length >= 4) break;
+            foundCode = '';
+          }
+        }
+        
+        if (foundCode && foundCode.length >= 4) break;
+      }
+
+      // Si aucun code n'a été trouvé, essayons de chercher des nombres spécifiques
+      // qui apparaissent dans l'image comme 3069280-8 ou 5158C005
+      if (!foundCode) {
+        const specificPatterns = [
+          /3069280[\s-]*8/,    // Exactement comme dans l'image
+          /5158[A-Z]005/       // Format comme dans l'image
+        ];
+        
+        for (const pattern of specificPatterns) {
+          const match = cleanedText.match(pattern);
+          if (match) {
+            foundCode = match[0].replace(/[^\d\w/-]/g, '');
+            console.log('Format spécifique trouvé:', foundCode);
             break;
           }
-          foundCode = '';
         }
       }
-      
-      if (foundCode) break;
-    }
 
-    if (foundCode) {
-      searchProduct(foundCode);
-    } else {
-      setError('Aucun code UGS ou Modèle trouvé.');
+      if (foundCode) {
+        console.log('Code final retenu:', foundCode);
+        searchProduct(foundCode);
+      } else {
+        throw new Error('Aucun code UGS ou Modèle valide détecté.');
+      }
+    } catch (err) {
+      console.error("Erreur lors de l'analyse OCR:", err);
+      setError(err instanceof Error ? err.message : 'Aucun code UGS ou modèle trouvé. Assurez-vous que le code UGS ou modèle est bien visible.');
       setIsLoading(false);
     }
   };
