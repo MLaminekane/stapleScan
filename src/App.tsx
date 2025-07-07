@@ -48,6 +48,33 @@ function App() {
     }
   }, [isLoading]);
 
+  const enhanceImage = (context: CanvasRenderingContext2D, width: number, height: number) => {
+    // Amélioration du contraste et de la netteté
+    const imageData = context.getImageData(0, 0, width, height);
+    const data = imageData.data;
+    
+    // Augmentation du contraste
+    const contrast = 1.5;
+    const factor = (259 * (contrast + 255)) / (255 * (259 - contrast));
+    
+    for (let i = 0; i < data.length; i += 4) {
+      // Conversion en niveaux de gris
+      const gray = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+      
+      // Application du contraste
+      data[i] = factor * (gray - 128) + 128;     // R
+      data[i + 1] = factor * (gray - 128) + 128; // G
+      data[i + 2] = factor * (gray - 128) + 128; // B
+      
+      // Seuillage pour rendre le texte plus net
+      const threshold = 128;
+      const value = gray > threshold ? 255 : 0;
+      data[i] = data[i + 1] = data[i + 2] = value;
+    }
+    
+    context.putImageData(imageData, 0, 0);
+  };
+
   const handleOcrScan = async () => {
     if (!videoRef.current) return;
 
@@ -58,23 +85,68 @@ function App() {
     canvas.width = videoRef.current.videoWidth;
     canvas.height = videoRef.current.videoHeight;
     const context = canvas.getContext('2d');
-    context?.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
+    
+    if (!context) {
+      setError('Impossible d\'initialiser le contexte graphique');
+      setIsLoading(false);
+      return;
+    }
 
-    const { data: { text } } = await Tesseract.recognize(canvas, 'fra');
-    const lines = text.split('\n');
+    // Dessiner l'image et l'améliorer
+    context.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
+    enhanceImage(context, canvas.width, canvas.height);
+
+    // Configuration minimale de Tesseract pour une meilleure compatibilité
+    const { data: { text } } = await Tesseract.recognize(
+      canvas,
+      'eng+fra', // Utiliser à la fois l'anglais et le français
+      { 
+        logger: m => console.log(m)
+      }
+    );
+    
+    // Appliquer un post-traitement pour nettoyer le texte
+    const cleanedText = text
+      .replace(/[^\w\d\s-/]/g, '') // Supprimer les caractères spéciaux
+      .replace(/\s+/g, ' ') // Remplacer les espaces multiples par un seul
+      .trim();
+
+    console.log('Texte détecté:', cleanedText); // Pour le débogage
+    
+    // Utiliser le texte nettoyé pour la détection
+    const lines = cleanedText.split(/[\s\n\r]+/); // Séparer sur tout type d'espace ou retour à la ligne
     let foundCode = '';
 
+    // Expressions régulières plus flexibles
+    const patterns = [
+      /UGS[^\d]*(\d[\d-]*\d)/i, // UGS suivi de chiffres et tirets
+      /(\d{5,})/, // Au moins 5 chiffres consécutifs
+      /(\d[\d\s-]{4,}\d)/, // Numéros avec tirets ou espaces
+      /mod[ée]le[^\d]*(\w[\w/\d-]+)/i, // Modèle avec différents séparateurs
+    ];
+
     for (const line of lines) {
-      const ugsMatch = line.match(/UGS\s*([\d-]+)/i);
-      if (ugsMatch && ugsMatch[1]) {
-        foundCode = ugsMatch[1].split('-')[0];
-        break;
+      const trimmedLine = line.trim();
+      if (!trimmedLine) continue;
+
+      for (const pattern of patterns) {
+        const match = trimmedLine.match(pattern);
+        if (match && match[1]) {
+          // Nettoyer le code trouvé
+          foundCode = match[1]
+            .replace(/[^\d\w/-]/g, '') // Garder uniquement chiffres, lettres, / et -
+            .replace(/^0+/, '') // Supprimer les zéros en début de chaîne
+            .replace(/-+$/, ''); // Supprimer les tirets en fin de chaîne
+          
+          if (foundCode.length >= 4) { // Code valide si au moins 4 caractères
+            console.log('Code trouvé:', foundCode, 'dans la ligne:', trimmedLine);
+            break;
+          }
+          foundCode = '';
+        }
       }
-      const modeleMatch = line.match(/Mod.le\s*([\w\d/]+)/i);
-      if (modeleMatch && modeleMatch[1]) {
-        foundCode = modeleMatch[1];
-        break;
-      }
+      
+      if (foundCode) break;
     }
 
     if (foundCode) {
