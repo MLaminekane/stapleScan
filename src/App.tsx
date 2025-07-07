@@ -154,24 +154,48 @@ function App() {
 
       console.log('Codes potentiels:', potentialCodes);
       
-      // Chercher en priorité les UGS
-      const ugsMatch = potentialCodes.find((word) => 
-        /^UGS[^\d]*(\d[\d-]*\d?)$/i.test(word.text) ||
-        /^[A-Z]{2,}\d{3,}/i.test(word.text) // Format comme "ABC123"
-      );
+      // Chercher en priorité les UGS avec le format exact
+      const ugsMatch = potentialCodes.find((word) => {
+        const cleanText = word.text.replace(/[^\w\d-]/g, '');
+        // Vérifier le format UGS suivi de chiffres
+        if (/^UGS[^\d]*(\d[\d-]*\d?)$/i.test(cleanText)) {
+          // S'assurer qu'il y a au moins 4 chiffres après UGS
+          const digits = cleanText.replace(/^UGS[^\d]*/i, '').replace(/\D/g, '');
+          return digits.length >= 4;
+        }
+        return false;
+      });
       
       if (ugsMatch) {
-        // Extraire uniquement les chiffres et lettres
-        const foundCode = ugsMatch.text.replace(/[^\w\d-]/g, '');
-        console.log('Code trouvé:', foundCode);
-        return foundCode;
-      } 
-      // Sinon, chercher des numéros de modèle
-      else if (potentialCodes.length > 0) {
-        // Prendre le code le plus long qui ressemble à une référence
-        const foundCode = potentialCodes[0].text.replace(/[^\w\d-]/g, '');
-        console.log('Code potentiel trouvé:', foundCode);
-        return foundCode;
+        // Extraire uniquement les chiffres après UGS
+        const digits = ugsMatch.text.replace(/^UGS[^\d]*/i, '').replace(/\D/g, '');
+        console.log('Code UGS trouvé:', digits);
+        return digits;
+      }
+      
+      // Ensuite chercher des suites de chiffres suffisamment longues
+      const numberMatch = potentialCodes.find(word => {
+        const cleanText = word.text.replace(/[^\d]/g, '');
+        return cleanText.length >= 5; // Au moins 5 chiffres consécutifs
+      });
+      
+      if (numberMatch) {
+        const digits = numberMatch.text.replace(/\D/g, '');
+        console.log('Numéro trouvé:', digits);
+        return digits;
+      }
+      
+      // En dernier recours, essayer de trouver un code avec chiffres et lettres
+      const codeMatch = potentialCodes.find(word => {
+        const cleanText = word.text.replace(/[^\w\d-]/g, '');
+        // Au moins 4 caractères avec au moins 2 chiffres
+        return cleanText.length >= 4 && (cleanText.match(/\d/g) || []).length >= 2;
+      });
+      
+      if (codeMatch) {
+        const code = codeMatch.text.replace(/[^\w\d-]/g, '');
+        console.log('Code potentiel trouvé:', code);
+        return code;
       }
       
       return null;
