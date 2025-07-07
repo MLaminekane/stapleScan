@@ -75,86 +75,124 @@ function App() {
     context.putImageData(imageData, 0, 0);
   };
 
+  interface DetectedWord {
+    text: string;
+    confidence: number;
+    bbox: {
+      x0: number;
+      y0: number;
+      x1: number;
+      y1: number;
+    };
+  }
+
   const handleOcrScan = async () => {
     if (!videoRef.current) return;
 
-    setLoadingMessage('Analyse du texte...');
+    setLoadingMessage('Analyse précise en cours...');
     setIsLoading(true);
+    setError('');
 
-    const canvas = document.createElement('canvas');
-    canvas.width = videoRef.current.videoWidth;
-    canvas.height = videoRef.current.videoHeight;
-    const context = canvas.getContext('2d');
-    
-    if (!context) {
-      setError('Impossible d\'initialiser le contexte graphique');
-      setIsLoading(false);
-      return;
-    }
-
-    // Dessiner l'image et l'améliorer
-    context.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
-    enhanceImage(context, canvas.width, canvas.height);
-
-    // Configuration minimale de Tesseract pour une meilleure compatibilité
-    const { data: { text } } = await Tesseract.recognize(
-      canvas,
-      'eng+fra', // Utiliser à la fois l'anglais et le français
-      { 
-        logger: m => console.log(m)
+    const processTextDetection = async () => {
+      const canvas = document.createElement('canvas');
+      // Augmenter la taille du canvas pour une meilleure précision
+      canvas.width = videoRef.current!.videoWidth * 2;
+      canvas.height = videoRef.current!.videoHeight * 2;
+      const context = canvas.getContext('2d', { willReadFrequently: true });
+      
+      if (!context) {
+        throw new Error('Impossible d\'initialiser le contexte graphique');
       }
-    );
-    
-    // Appliquer un post-traitement pour nettoyer le texte
-    const cleanedText = text
-      .replace(/[^\w\d\s-/]/g, '') // Supprimer les caractères spéciaux
-      .replace(/\s+/g, ' ') // Remplacer les espaces multiples par un seul
-      .trim();
 
-    console.log('Texte détecté:', cleanedText); // Pour le débogage
-    
-    // Utiliser le texte nettoyé pour la détection
-    const lines = cleanedText.split(/[\s\n\r]+/); // Séparer sur tout type d'espace ou retour à la ligne
-    let foundCode = '';
+      // Dessiner l'image en haute résolution
+      context.drawImage(videoRef.current!, 0, 0, canvas.width, canvas.height);
+      
+      // Améliorer le contraste et la netteté
+      enhanceImage(context, canvas.width, canvas.height);
 
-    // Expressions régulières plus flexibles
-    const patterns = [
-      /UGS[^\d]*(\d[\d-]*\d)/i, // UGS suivi de chiffres et tirets
-      /(\d{5,})/, // Au moins 5 chiffres consécutifs
-      /(\d[\d\s-]{4,}\d)/, // Numéros avec tirets ou espaces
-      /mod[ée]le[^\d]*(\w[\w/\d-]+)/i, // Modèle avec différents séparateurs
-    ];
-
-    for (const line of lines) {
-      const trimmedLine = line.trim();
-      if (!trimmedLine) continue;
-
-      for (const pattern of patterns) {
-        const match = trimmedLine.match(pattern);
-        if (match && match[1]) {
-          // Nettoyer le code trouvé
-          foundCode = match[1]
-            .replace(/[^\d\w/-]/g, '') // Garder uniquement chiffres, lettres, / et -
-            .replace(/^0+/, '') // Supprimer les zéros en début de chaîne
-            .replace(/-+$/, ''); // Supprimer les tirets en fin de chaîne
-          
-          if (foundCode.length >= 4) { // Code valide si au moins 4 caractères
-            console.log('Code trouvé:', foundCode, 'dans la ligne:', trimmedLine);
-            break;
-          }
-          foundCode = '';
+      // Détection du texte avec Tesseract
+      const { data: { text } } = await Tesseract.recognize(
+        canvas,
+        'eng', // Utiliser uniquement l'anglais pour les codes
+        { 
+          logger: m => console.log(m)
         }
+      );
+
+      console.log('Texte détecté:', text);
+      
+      // Extraire les mots avec leurs positions
+      const detectedWords: DetectedWord[] = [];
+      const lines = text.split(/\n+/);
+      
+      lines.forEach((line) => {
+        const wordsInLine = line.split(/\s+/);
+        wordsInLine.forEach(word => {
+          const trimmedWord = word.trim();
+          if (trimmedWord.length >= 4) { // Ignorer les mots trop courts
+            detectedWords.push({
+              text: trimmedWord,
+              confidence: 80, // Estimation
+              bbox: { x0: 0, y0: 0, x1: 0, y1: 0 } // Non utilisé pour le moment
+            });
+          }
+        });
+      });
+
+      console.log('Mots détectés:', detectedWords);
+      
+      // Filtrer et trier les mots détectés
+      const potentialCodes = detectedWords
+        .filter((word) => {
+          const cleanText = word.text.replace(/[^\w\d-]/g, '');
+          return (
+            cleanText.length >= 4 && // Au moins 4 caractères
+            /[0-9]/.test(cleanText) // Doit contenir au moins un chiffre
+          );
+        })
+        .sort((a, b) => b.text.length - a.text.length); // Trier par longueur décroissante
+
+      console.log('Codes potentiels:', potentialCodes);
+      
+      // Chercher en priorité les UGS
+      const ugsMatch = potentialCodes.find((word) => 
+        /^UGS[^\d]*(\d[\d-]*\d?)$/i.test(word.text) ||
+        /^[A-Z]{2,}\d{3,}/i.test(word.text) // Format comme "ABC123"
+      );
+      
+      if (ugsMatch) {
+        // Extraire uniquement les chiffres et lettres
+        const foundCode = ugsMatch.text.replace(/[^\w\d-]/g, '');
+        console.log('Code trouvé:', foundCode);
+        return foundCode;
+      } 
+      // Sinon, chercher des numéros de modèle
+      else if (potentialCodes.length > 0) {
+        // Prendre le code le plus long qui ressemble à une référence
+        const foundCode = potentialCodes[0].text.replace(/[^\w\d-]/g, '');
+        console.log('Code potentiel trouvé:', foundCode);
+        return foundCode;
       }
       
-      if (foundCode) break;
-    }
+      return null;
+    };
 
-    if (foundCode) {
-      searchProduct(foundCode);
-    } else {
-      setError('Aucun code UGS ou Modèle trouvé.');
+    try {
+      const foundCode = await processTextDetection();
+      
+      if (foundCode) {
+        searchProduct(foundCode);
+      } else {
+        setError('Aucun code valide détecté. Essayez de mieux cadrer le code.');
+        setIsLoading(false);
+      }
+    } catch (error) {
+      console.error('Erreur lors de la reconnaissance du texte:', error);
+      setError('Erreur lors de l\'analyse du texte. Veuillez réessayer.');
       setIsLoading(false);
     }
+
+    // La gestion du code trouvé est maintenant gérée dans le bloc try/catch ci-dessus
   };
 
   useEffect(() => {
