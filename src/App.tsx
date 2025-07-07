@@ -86,6 +86,101 @@ function App() {
     };
   }
 
+  // Fonction pour détecter si un texte est une date
+  const isDate = (text: string): boolean => {
+    const cleanText = text.replace(/[^\d\/\-\.]/g, '');
+    
+    // Patterns de dates courants
+    const datePatterns = [
+      /^\d{1,2}\/\d{1,2}\/\d{2,4}$/,    // 01/01/2024
+      /^\d{1,2}-\d{1,2}-\d{2,4}$/,      // 01-01-2024
+      /^\d{1,2}\.\d{1,2}\.\d{2,4}$/,    // 01.01.2024
+      /^\d{2,4}\/\d{1,2}\/\d{1,2}$/,    // 2024/01/01
+      /^\d{2,4}-\d{1,2}-\d{1,2}$/,      // 2024-01-01
+      /^\d{2,4}\.\d{1,2}\.\d{1,2}$/,    // 2024.01.01
+      /^\d{8}$/,                         // 20240101
+      /^\d{6}$/                          // 240101
+    ];
+    
+    return datePatterns.some(pattern => pattern.test(cleanText));
+  };
+
+  // Fonction pour nettoyer et valider un code UGS
+  const cleanUgsCode = (text: string): string | null => {
+    // Rechercher le pattern UGS suivi de chiffres
+    const ugsMatch = text.match(/UGS[^\d]*(\d+)/i);
+    if (ugsMatch) {
+      const digits = ugsMatch[1].replace(/\D/g, ''); // Garder seulement les chiffres
+      return digits.length >= 4 ? digits : null;
+    }
+    return null;
+  };
+
+  // Fonction pour valider un code produit
+  const isValidProductCode = (text: string): boolean => {
+    const cleanText = text.replace(/[^\w\d-]/g, '');
+    
+    // Rejeter si c'est une date
+    if (isDate(text)) return false;
+    
+    // Rejeter si c'est trop court
+    if (cleanText.length < 4) return false;
+    
+    // Rejeter si c'est uniquement des lettres
+    if (!/\d/.test(cleanText)) return false;
+    
+    // Rejeter les patterns de prix (ex: 19.99, $19.99)
+    if (/^\$?\d+[\.,]\d{2}$/.test(cleanText)) return false;
+    
+    // Rejeter les numéros de téléphone
+    if (/^\d{3}[-\s]?\d{3}[-\s]?\d{4}$/.test(cleanText)) return false;
+    
+    // Rejeter les codes postaux
+    if (/^[A-Z]\d[A-Z]\s?\d[A-Z]\d$/i.test(cleanText)) return false;
+    
+    // Accepter les codes qui ont au moins 4 chiffres ou un bon format
+    const digitCount = (cleanText.match(/\d/g) || []).length;
+    return digitCount >= 4 || /^[A-Z]{1,3}\d{4,}$/i.test(cleanText);
+  };
+
+  // Fonction pour calculer la priorité d'un code
+  const getCodePriority = (text: string): number => {
+    let priority = 0;
+    const cleanText = text.replace(/[^\w\d-]/g, '');
+    
+    // Priorité maximale pour les codes UGS
+    if (/^UGS/i.test(text)) {
+      priority += 1000;
+    }
+    
+    // Priorité élevée pour les codes avec format produit typique
+    if (/^\d{6,}$/.test(cleanText)) {
+      priority += 500; // Codes purement numériques de 6+ chiffres
+    }
+    
+    if (/^[A-Z]{1,3}\d{4,}$/i.test(cleanText)) {
+      priority += 400; // Format lettre(s) + chiffres
+    }
+    
+    if (/^\d{4,5}$/.test(cleanText)) {
+      priority += 300; // Codes de 4-5 chiffres
+    }
+    
+    // Bonus pour la longueur (codes plus longs souvent plus spécifiques)
+    if (cleanText.length >= 6) priority += 100;
+    if (cleanText.length >= 8) priority += 50;
+    
+    // Bonus pour les chiffres
+    const digitCount = (cleanText.match(/\d/g) || []).length;
+    priority += digitCount * 10;
+    
+    // Malus pour les caractères spéciaux
+    const specialChars = cleanText.replace(/[A-Z0-9]/gi, '').length;
+    priority -= specialChars * 20;
+    
+    return priority;
+  };
+
   const handleOcrScan = async () => {
     if (!videoRef.current) return;
 
@@ -121,81 +216,47 @@ function App() {
 
       console.log('Texte détecté:', text);
       
-      // Extraire les mots avec leurs positions
-      const detectedWords: DetectedWord[] = [];
-      const lines = text.split(/\n+/);
-      
-      lines.forEach((line) => {
-        const wordsInLine = line.split(/\s+/);
-        wordsInLine.forEach(word => {
-          const trimmedWord = word.trim();
-          if (trimmedWord.length >= 4) { // Ignorer les mots trop courts
-            detectedWords.push({
-              text: trimmedWord,
-              confidence: 80, // Estimation
-              bbox: { x0: 0, y0: 0, x1: 0, y1: 0 } // Non utilisé pour le moment
-            });
-          }
-        });
-      });
+      // Extraire tous les mots du texte
+      const allWords = text.split(/[\s\n\r]+/)
+        .map(word => word.trim())
+        .filter(word => word.length > 0);
 
-      console.log('Mots détectés:', detectedWords);
+      console.log('Tous les mots:', allWords);
       
-      // Filtrer et trier les mots détectés
-      const potentialCodes = detectedWords
-        .filter((word) => {
-          const cleanText = word.text.replace(/[^\w\d-]/g, '');
-          return (
-            cleanText.length >= 4 && // Au moins 4 caractères
-            /[0-9]/.test(cleanText) // Doit contenir au moins un chiffre
-          );
-        })
-        .sort((a, b) => b.text.length - a.text.length); // Trier par longueur décroissante
+      // Filtrer et évaluer les codes potentiels
+      const potentialCodes = allWords
+        .filter(word => isValidProductCode(word))
+        .map(word => ({
+          text: word,
+          cleanText: word.replace(/[^\w\d-]/g, ''),
+          priority: getCodePriority(word)
+        }))
+        .sort((a, b) => b.priority - a.priority);
 
-      console.log('Codes potentiels:', potentialCodes);
+      console.log('Codes potentiels avec priorité:', potentialCodes);
       
-      // Chercher en priorité les UGS avec le format exact
-      const ugsMatch = potentialCodes.find((word) => {
-        const cleanText = word.text.replace(/[^\w\d-]/g, '');
-        // Vérifier le format UGS suivi de chiffres
-        if (/^UGS[^\d]*(\d[\d-]*\d?)$/i.test(cleanText)) {
-          // S'assurer qu'il y a au moins 4 chiffres après UGS
-          const digits = cleanText.replace(/^UGS[^\d]*/i, '').replace(/\D/g, '');
-          return digits.length >= 4;
+      // Vérifier d'abord les codes UGS
+      for (const code of potentialCodes) {
+        const ugsCode = cleanUgsCode(code.text);
+        if (ugsCode) {
+          console.log('Code UGS trouvé:', ugsCode);
+          return ugsCode;
         }
-        return false;
-      });
-      
-      if (ugsMatch) {
-        // Extraire uniquement les chiffres après UGS
-        const digits = ugsMatch.text.replace(/^UGS[^\d]*/i, '').replace(/\D/g, '');
-        console.log('Code UGS trouvé:', digits);
-        return digits;
       }
       
-      // Ensuite chercher des suites de chiffres suffisamment longues
-      const numberMatch = potentialCodes.find(word => {
-        const cleanText = word.text.replace(/[^\d]/g, '');
-        return cleanText.length >= 5; // Au moins 5 chiffres consécutifs
-      });
-      
-      if (numberMatch) {
-        const digits = numberMatch.text.replace(/\D/g, '');
-        console.log('Numéro trouvé:', digits);
-        return digits;
-      }
-      
-      // En dernier recours, essayer de trouver un code avec chiffres et lettres
-      const codeMatch = potentialCodes.find(word => {
-        const cleanText = word.text.replace(/[^\w\d-]/g, '');
-        // Au moins 4 caractères avec au moins 2 chiffres
-        return cleanText.length >= 4 && (cleanText.match(/\d/g) || []).length >= 2;
-      });
-      
-      if (codeMatch) {
-        const code = codeMatch.text.replace(/[^\w\d-]/g, '');
-        console.log('Code potentiel trouvé:', code);
-        return code;
+      // Ensuite prendre le code avec la plus haute priorité
+      if (potentialCodes.length > 0) {
+        const bestCode = potentialCodes[0];
+        // Nettoyer le code en gardant seulement les chiffres pour les codes purement numériques
+        let finalCode = bestCode.cleanText;
+        
+        // Si c'est un code purement numérique, garder seulement les chiffres
+        if (/^\d+[-\s]*\d*$/.test(finalCode)) {
+          finalCode = finalCode.replace(/\D/g, '');
+        }
+        
+        console.log('Meilleur code trouvé:', finalCode);
+        return finalCode;
       }
       
       return null;
@@ -207,7 +268,7 @@ function App() {
       if (foundCode) {
         searchProduct(foundCode);
       } else {
-        setError('Aucun code valide détecté. Essayez de mieux cadrer le code.');
+        setError('Aucun code produit valide détecté. Assurez-vous que le code UGS ou modèle est bien visible.');
         setIsLoading(false);
       }
     } catch (error) {
@@ -215,8 +276,6 @@ function App() {
       setError('Erreur lors de l\'analyse du texte. Veuillez réessayer.');
       setIsLoading(false);
     }
-
-    // La gestion du code trouvé est maintenant gérée dans le bloc try/catch ci-dessus
   };
 
   useEffect(() => {
