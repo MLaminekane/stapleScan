@@ -68,52 +68,6 @@ h1 {
   white-space: nowrap;
 }
 
-/* Permission status styles */
-.permission-status {
-  background-color: #e7f3ff;
-  border: 1px solid #b3d9ff;
-  border-radius: 4px;
-  padding: 15px;
-  margin: 15px 0;
-  text-align: center;
-}
-
-.permission-status.error {
-  background-color: #ffebee;
-  border-color: #ffcdd2;
-  color: #c62828;
-}
-
-.permission-button {
-  background-color: #007bff;
-  color: white;
-  border: none;
-  padding: 10px 20px;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 1em;
-  margin-top: 10px;
-  min-height: 44px;
-}
-
-.permission-button:hover {
-  background-color: #0056b3;
-}
-
-.permission-button:active {
-  background-color: #004085;
-}
-
-/* Install prompt styles */
-.install-prompt {
-  background-color: #e8f5e8;
-  border: 1px solid #4caf50;
-  border-radius: 4px;
-  padding: 15px;
-  margin: 15px 0;
-  text-align: center;
-}
-
 /* Responsive styles for mobile screens */
 @media (max-width: 600px) {
   .manual-search {
@@ -133,67 +87,5 @@ h1 {
 .error-message {
   color: #d9534f;
   margin-top: 15px;
-}
-
-/* PWA Styles for better mobile experience */
-@media (display-mode: standalone) {
-  body {
-    -webkit-user-select: none;
-    user-select: none;
-    -webkit-touch-callout: none;
-    -webkit-tap-highlight-color: transparent;
-  }
-  
-  .App {
-    padding-top: env(safe-area-inset-top);
-    padding-bottom: env(safe-area-inset-bottom);
-    min-height: 100vh;
-  }
-}
-
-/* Better touch targets for mobile */
-.manual-search button {
-  min-height: 44px;
-  min-width: 44px;
-}
-
-/* Loading state improvements */
-.loading-state {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  min-height: 50vh;
-}
-
-.loading-state h1 {
-  margin-bottom: 20px;
-  animation: pulse 2s infinite;
-}
-
-@keyframes pulse {
-  0%, 100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.7;
-  }
-}
-
-/* Improved camera viewport for mobile */
-@media (max-width: 768px) {
-  .scanner-container {
-    height: 200px;
-    margin: 10px 0;
-  }
-  
-  .container {
-    margin: 10px;
-    padding: 15px;
-  }
-  
-  h1 {
-    font-size: 1.5em;
-  }
 }
 

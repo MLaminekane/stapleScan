@@ -13,43 +13,13 @@ interface ApiResponse {
   };
 }
 
-interface BeforeInstallPromptEvent extends Event {
-  prompt(): Promise<void>;
-  userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>;
-}
-
 function App() {
   const [manualCode, setManualCode] = useState('');
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [loadingMessage, setLoadingMessage] = useState('Recherche en cours...');
-  const [cameraPermission, setCameraPermission] = useState<'granted' | 'denied' | 'prompt' | 'checking'>('checking');
-  const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
-  const isQuaggaStartedRef = useRef(false);
   const scannerRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
-
-  const requestCameraPermission = useCallback(async () => {
-    try {
-      setError('');
-      const stream = await navigator.mediaDevices.getUserMedia({ 
-        video: { 
-          facingMode: 'environment',
-          width: { ideal: 1920 },
-          height: { ideal: 1080 }
-        } 
-      });
-      
-      stream.getTracks().forEach(track => track.stop());
-      setCameraPermission('granted');
-      return true;
-    } catch (err) {
-      console.error('Camera permission denied:', err);
-      setCameraPermission('denied');
-      setError('Accès à la caméra refusé. Veuillez autoriser l\'accès dans les paramètres de votre navigateur.');
-      return false;
-    }
-  }, []);
 
   const searchProduct = useCallback(async (code: string) => {
     if (!code || isLoading) return;
@@ -100,15 +70,7 @@ function App() {
   };
 
   const handleOcrScan = async () => {
-    if (!videoRef.current) {
-      setError('Aucune vidéo disponible. Assurez-vous que la caméra est activée.');
-      return;
-    }
-
-    if (cameraPermission !== 'granted') {
-      setError('Accès à la caméra requis pour scanner le texte.');
-      return;
-    }
+    if (!videoRef.current) return;
 
     setLoadingMessage('Analyse du texte...');
     setIsLoading(true);
@@ -122,10 +84,8 @@ function App() {
       
       if (!context) {
         throw new Error('Impossible d\'initialiser le contexte graphique');
-      }
-
-      context.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
-      enhanceImage(context, canvas.width, canvas.height);
+      }    context.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
+    enhanceImage(context, canvas.width, canvas.height);
 
       const { data: { text } } = await Tesseract.recognize(
         canvas,
@@ -237,169 +197,64 @@ function App() {
   };
 
   useEffect(() => {
-    const checkPermissions = async () => {
-      try {
-        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-          throw new Error('Camera not supported');
-        }
-
-        const result = await navigator.permissions.query({ name: 'camera' as PermissionName });
-        setCameraPermission(result.state as 'granted' | 'denied' | 'prompt');
-        
-        result.addEventListener('change', () => {
-          setCameraPermission(result.state as 'granted' | 'denied' | 'prompt');
-        });
-      } catch (err) {
-        console.error('Permission check failed:', err);
-        setCameraPermission('prompt');
-      }
-    };
-
-    checkPermissions();
-  }, []);
-
-  useEffect(() => {
     const onDetected = (result: { codeResult: { code: string } }) => {
       if (result.codeResult.code) searchProduct(result.codeResult.code);
     };
 
-    const initializeScanner = async () => {
-      if (!scannerRef.current || isLoading) return;
-      
-      if (cameraPermission === 'checking') return;
-      
-      if (cameraPermission === 'denied' || cameraPermission === 'prompt') {
-        const hasPermission = await requestCameraPermission();
-        if (!hasPermission) return;
-      }
-
-      try {
-        Quagga.init({
-          inputStream: {
-            name: "Live",
-            type: "LiveStream",
-            target: scannerRef.current,
-            constraints: {
-              width: { ideal: 1920 },
-              height: { ideal: 1080 },
-              facingMode: "environment",
-              advanced: [
-                { zoom: { ideal: 1.5 } },
-                { focusMode: "continuous" },
-                { focusDistance: { ideal: 0.1 } }
-              ]
-            },
+    if (scannerRef.current && !isLoading) {
+      Quagga.init({
+        inputStream: {
+          name: "Live",
+          type: "LiveStream",
+          target: scannerRef.current,
+          constraints: {
+            width: { ideal: 1920 },
+            height: { ideal: 1080 },
+            facingMode: "environment",
+            advanced: [
+              { zoom: { ideal: 1.5 } },
+              { focusMode: "continuous" },
+              { focusDistance: { ideal: 0.1 } }
+            ]
           },
-          decoder: {
-            readers: ['ean_reader', 'upc_reader', 'code_128_reader'],
-            debug: {
-              drawBoundingBox: true,
-              showFrequency: true,
-              drawScanline: true,
-              showPattern: true
-            }
-          },
-          locate: true,
-          numOfWorkers: navigator.hardwareConcurrency || 4,
-          frequency: 10
-        }, (err: Error | null) => {
-          if (err) {
-            console.error('Quagga initialization error:', err);
-            setError('Erreur: Impossible d\'accéder à la caméra. Veuillez autoriser l\'accès à la caméra et actualiser la page.');
-            return;
+        },
+        decoder: {
+          readers: ['ean_reader', 'upc_reader', 'code_128_reader'],
+          debug: {
+            drawBoundingBox: true,
+            showFrequency: true,
+            drawScanline: true,
+            showPattern: true
           }
-          Quagga.start();
-          isQuaggaStartedRef.current = true;
-          videoRef.current = scannerRef.current?.querySelector('video') || null;
-        });
-        Quagga.onDetected(onDetected);
-      } catch (error) {
-        console.error('Scanner initialization failed:', error);
-        setError('Erreur lors de l\'initialisation du scanner.');
-      }
-    };
-
-    initializeScanner();
-
-    return () => {
-      Quagga.offDetected(onDetected);
-      if (isQuaggaStartedRef.current) {
-        try {
-          Quagga.stop();
-          isQuaggaStartedRef.current = false;
-        } catch (error) {
-          console.error('Error stopping Quagga:', error);
+        },
+        locate: true,
+        numOfWorkers: navigator.hardwareConcurrency || 4,
+        frequency: 10
+          }, (err: Error | null) => {
+        if (err) {
+          setError('Erreur: Impossible d\'accéder à la caméra.');
+          return;
         }
-      }
-    };
-  }, [isLoading, searchProduct, cameraPermission, requestCameraPermission]);
-
-  useEffect(() => {
-    const handleBeforeInstallPrompt = (e: BeforeInstallPromptEvent) => {
-      e.preventDefault();
-      setInstallPrompt(e);
-    };
-
-    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt as EventListener);
-
-    return () => {
-      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt as EventListener);
-    };
-  }, []);
-
-  const handleInstallApp = async () => {
-    if (!installPrompt) return;
-
-    const result = await installPrompt.prompt();
-    console.log('Install prompt result:', result);
-    setInstallPrompt(null);
-  };
+        Quagga.start();
+        videoRef.current = scannerRef.current?.querySelector('video') || null;
+      });
+      Quagga.onDetected(onDetected);
+      return () => {
+        Quagga.offDetected(onDetected);
+        Quagga.stop();
+      };
+    }
+  }, [isLoading, searchProduct]);
 
   return (
     <div className="App">
       <div className="container">
         {isLoading ? (
-          <div className="loading-state">
-            <h1>{loadingMessage}</h1>
-          </div>
+          <div><h1>{loadingMessage}</h1></div>
         ) : (
           <>
             <h1>Scanneur de Produits</h1>
             <p>Pointez la caméra sur un code-barre ou un texte.</p>
-            
-            {cameraPermission === 'checking' && (
-              <div className="permission-status">
-                <p>Vérification des permissions caméra...</p>
-              </div>
-            )}
-            
-            {cameraPermission === 'denied' && (
-              <div className="permission-status error">
-                <p>Accès à la caméra refusé. Veuillez autoriser l'accès dans les paramètres de votre navigateur et actualiser la page.</p>
-                <button onClick={requestCameraPermission} className="permission-button">
-                  Réessayer l'accès caméra
-                </button>
-              </div>
-            )}
-            
-            {cameraPermission === 'prompt' && (
-              <div className="permission-status">
-                <p>L'application a besoin d'accéder à votre caméra pour scanner les codes.</p>
-                <button onClick={requestCameraPermission} className="permission-button">
-                  Autoriser l'accès caméra
-                </button>
-              </div>
-            )}
-            
-            {installPrompt && (
-              <div className="install-prompt">
-                <p>Installer StapleScan sur votre appareil pour un accès rapide !</p>
-                <button onClick={handleInstallApp} className="permission-button">
-                  Installer l'application
-                </button>
-              </div>
-            )}
-            
             <div ref={scannerRef} className="scanner-container"></div>
             {error && <p className="error-message">{error}</p>}
             <div className="manual-search">
@@ -412,7 +267,6 @@ function App() {
               />
               <button onClick={() => searchProduct(manualCode)}>Rechercher</button>
             </div>
-            {/* Prompt d'installation PWA */}
           </>
         )}
       </div>
