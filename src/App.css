@@ -68,6 +68,52 @@ h1 {
   white-space: nowrap;
 }
 
+/* Permission status styles */
+.permission-status {
+  background-color: #e7f3ff;
+  border: 1px solid #b3d9ff;
+  border-radius: 4px;
+  padding: 15px;
+  margin: 15px 0;
+  text-align: center;
+}
+
+.permission-status.error {
+  background-color: #ffebee;
+  border-color: #ffcdd2;
+  color: #c62828;
+}
+
+.permission-button {
+  background-color: #007bff;
+  color: white;
+  border: none;
+  padding: 10px 20px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 1em;
+  margin-top: 10px;
+  min-height: 44px;
+}
+
+.permission-button:hover {
+  background-color: #0056b3;
+}
+
+.permission-button:active {
+  background-color: #004085;
+}
+
+/* Install prompt styles */
+.install-prompt {
+  background-color: #e8f5e8;
+  border: 1px solid #4caf50;
+  border-radius: 4px;
+  padding: 15px;
+  margin: 15px 0;
+  text-align: center;
+}
+
 /* Responsive styles for mobile screens */
 @media (max-width: 600px) {
   .manual-search {

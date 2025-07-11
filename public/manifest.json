@@ -26,5 +26,11 @@
     "productivity",
     "utilities"
   ],
-  "lang": "fr-CA"
+  "lang": "fr-CA",
+  "permissions": [
+    "camera"
+  ],
+  "features": [
+    "camera"
+  ]
 }

@@ -25,7 +25,6 @@ function App() {
   const [loadingMessage, setLoadingMessage] = useState('Recherche en cours...');
   const [cameraPermission, setCameraPermission] = useState<'granted' | 'denied' | 'prompt' | 'checking'>('checking');
   const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
-  const isQuaggaStartedRef = useRef(false);
   const scannerRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
 
@@ -309,7 +308,6 @@ function App() {
             return;
           }
           Quagga.start();
-          isQuaggaStartedRef.current = true;
           videoRef.current = scannerRef.current?.querySelector('video') || null;
         });
         Quagga.onDetected(onDetected);
@@ -323,14 +321,7 @@ function App() {
 
     return () => {
       Quagga.offDetected(onDetected);
-      if (isQuaggaStartedRef.current) {
-        try {
-          Quagga.stop();
-          isQuaggaStartedRef.current = false;
-        } catch (error) {
-          console.error('Error stopping Quagga:', error);
-        }
-      }
+      Quagga.stop();
     };
   }, [isLoading, searchProduct, cameraPermission, requestCameraPermission]);
 
@@ -413,6 +404,14 @@ function App() {
               <button onClick={() => searchProduct(manualCode)}>Rechercher</button>
             </div>
             {/* Prompt d'installation PWA */}
+            {installPrompt && (
+              <div className="install-prompt">
+                <p>Cette application peut être installée sur votre appareil.</p>
+                <button onClick={handleInstallApp} className="install-button">
+                  Installer l'application
+                </button>
+              </div>
+            )}
           </>
         )}
       </div>
