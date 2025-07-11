@@ -74,7 +74,7 @@ function App() {
 
     setLoadingMessage('Analyse du texte...');
     setIsLoading(true);
-    setError(''); // Réinitialiser les messages d'erreur
+    setError(''); 
 
     try {
       const canvas = document.createElement('canvas');
@@ -103,7 +103,6 @@ function App() {
 
       console.log('Texte nettoyé:', cleanedText);
       
-      // Découper en lignes de manière plus flexible
       const lines = cleanedText.split(/[\n\r]+/);
       
       let foundCode = '';
@@ -119,14 +118,13 @@ function App() {
         /(\d{5,})/
       ];
 
-      // Recherche de codes dans chaque ligne
+      
       for (const line of lines) {
         const trimmedLine = line.trim();
         if (!trimmedLine) continue;
         
         console.log('Analyse ligne:', trimmedLine);
 
-        // D'abord, essayons de trouver les codes UGS ou Modèle explicitement marqués
         if (trimmedLine.toLowerCase().includes('ugs')) {
           const ugsMatch = trimmedLine.match(/UGS\s*:?\s*(\S+)/i) || 
                           trimmedLine.match(/UGS[^\d]*(\d+[\d-]*\d+)/i);
@@ -153,7 +151,6 @@ function App() {
           }
         }
 
-        // Si rien n'a été trouvé, essayons les autres patterns
         for (const pattern of patterns) {
           const match = trimmedLine.match(pattern);
           if (match && match[1]) {
