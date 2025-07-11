@@ -3,7 +3,6 @@ import Quagga from 'quagga';
 import Tesseract from 'tesseract.js';
 import './App.css';
 
-// Define types for the API response to avoid using 'any'
 interface Product {
   productUrl: string;
 }
@@ -49,25 +48,20 @@ function App() {
   }, [isLoading]);
 
   const enhanceImage = (context: CanvasRenderingContext2D, width: number, height: number) => {
-    // Amélioration du contraste et de la netteté
     const imageData = context.getImageData(0, 0, width, height);
     const data = imageData.data;
     
-    // Augmentation du contraste - ajustement pour mieux capturer le texte
-    const contrast = 2.0; // Augmentation du contraste pour mieux voir le texte
+    const contrast = 2.0;
     const factor = (259 * (contrast + 255)) / (255 * (259 - contrast));
     
     for (let i = 0; i < data.length; i += 4) {
-      // Conversion en niveaux de gris
       const gray = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
       
-      // Application du contraste
-      data[i] = factor * (gray - 128) + 128;     // R
-      data[i + 1] = factor * (gray - 128) + 128; // G
-      data[i + 2] = factor * (gray - 128) + 128; // B
+      data[i] = factor * (gray - 128) + 128;
+      data[i + 1] = factor * (gray - 128) + 128;
+      data[i + 2] = factor * (gray - 128) + 128;
       
-      // Seuillage adaptatif pour rendre le texte plus net
-      const threshold = 140; // Ajustement du seuil pour mieux capturer le texte
+      const threshold = 140;
       const value = gray > threshold ? 255 : 0;
       data[i] = data[i + 1] = data[i + 2] = value;
     }
@@ -90,26 +84,21 @@ function App() {
       
       if (!context) {
         throw new Error('Impossible d\'initialiser le contexte graphique');
-      }
+      }    context.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
+    enhanceImage(context, canvas.width, canvas.height);
 
-      // Dessiner l'image et l'améliorer
-      context.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
-      enhanceImage(context, canvas.width, canvas.height);
-
-      // Configuration de Tesseract pour une meilleure détection de texte
       const { data: { text } } = await Tesseract.recognize(
         canvas,
-        'eng+fra', // Utiliser à la fois l'anglais et le français
+        'eng+fra',
         { 
           logger: m => console.log(m)
         }
       );
       
-      console.log('Texte brut détecté:', text); // Pour le débogage
+      console.log('Texte brut détecté:', text);
       
-      // Nettoyage moins agressif du texte
       const cleanedText = text
-        .replace(/[^a-zA-Z0-9\s\-.,:()/]/g, '') // Garder plus de caractères pertinents
+        .replace(/[^a-zA-Z0-9\s\-.,:()/]/g, '')
         .trim();
 
       console.log('Texte nettoyé:', cleanedText);
@@ -119,21 +108,15 @@ function App() {
       
       let foundCode = '';
 
-      // Expressions régulières spécifiquement adaptées pour détecter les formats d'UGS visibles sur l'image
       const patterns = [
-        // Formats spécifiques pour UGS
-        /UGS\s*:?\s*(\d[\d\s-]*\d)/i,  // Format: UGS 1234567-8
-        /UGS[^\d]*(\d+[\d-]*\d+)/i,    // Format moins strict: UGS(n'importe quoi)1234567
-        
-        // Formats spécifiques pour Modèle
-        /Mod[èe]le\s*:?\s*(\w[\w\d-]*)/i,  // Format: Modèle ABC123
-        /Mod[èe]le[^\w]*(\w[\w\d/-]+)/i,   // Format moins strict
-        /(\d{5,}[A-Z]\d+)/i,              // Format numéro+lettre+numéro (5158C005)
-        
-        // Formats numériques génériques
-        /(\d{7,8}[-]\d)/,              // Format 3069280-8
-        /(\d{5,}[A-Z]\d+)/,            // Format 5158C005 
-        /(\d{5,})/                     // Au moins 5 chiffres consécutifs
+        /UGS\s*:?\s*(\d[\d\s-]*\d)/i,
+        /UGS[^\d]*(\d+[\d-]*\d+)/i,
+        /Mod[èe]le\s*:?\s*(\w[\w\d-]*)/i,
+        /Mod[èe]le[^\w]*(\w[\w\d/-]+)/i,
+        /(\d{5,}[A-Z]\d+)/i,
+        /(\d{7,8}[-]\d)/,
+        /(\d{5,}[A-Z]\d+)/,
+        /(\d{5,})/
       ];
 
       // Recherche de codes dans chaque ligne
@@ -184,12 +167,10 @@ function App() {
         if (foundCode && foundCode.length >= 4) break;
       }
 
-      // Si aucun code n'a été trouvé, essayons de chercher des nombres spécifiques
-      // qui apparaissent dans l'image comme 3069280-8 ou 5158C005
       if (!foundCode) {
         const specificPatterns = [
-          /3069280[\s-]*8/,    // Exactement comme dans l'image
-          /5158[A-Z]005/       // Format comme dans l'image
+          /3069280[\s-]*8/,
+          /5158[A-Z]005/
         ];
         
         for (const pattern of specificPatterns) {
@@ -216,8 +197,7 @@ function App() {
   };
 
   useEffect(() => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const onDetected = (result: any) => {
+    const onDetected = (result: { codeResult: { code: string } }) => {
       if (result.codeResult.code) searchProduct(result.codeResult.code);
     };
 
@@ -250,14 +230,12 @@ function App() {
         locate: true,
         numOfWorkers: navigator.hardwareConcurrency || 4,
         frequency: 10
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      }, (err: any) => {
+          }, (err: Error | null) => {
         if (err) {
           setError('Erreur: Impossible d\'accéder à la caméra.');
           return;
         }
         Quagga.start();
-        // Fix for lint error: ensure the value is not undefined
         videoRef.current = scannerRef.current?.querySelector('video') || null;
       });
       Quagga.onDetected(onDetected);
@@ -272,7 +250,9 @@ function App() {
     <div className="App">
       <div className="container">
         {isLoading ? (
-          <div><h1>{loadingMessage}</h1></div>
+          <div className="loading-state">
+            <h1>{loadingMessage}</h1>
+          </div>
         ) : (
           <>
             <h1>Scanneur de Produits</h1>

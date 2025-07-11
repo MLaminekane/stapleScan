@@ -1,0 +1,30 @@
+{
+  "name": "StapleScan - Scanneur de Produits",
+  "short_name": "StapleScan",
+  "description": "Application de scan de codes-barres et texte pour Bureau en Gros",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#007bff",
+  "orientation": "portrait-primary",
+  "scope": "/",
+  "icons": [
+    {
+      "src": "/icon-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable any"
+    },
+    {
+      "src": "/icon-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable any"
+    }
+  ],
+  "categories": [
+    "productivity",
+    "utilities"
+  ],
+  "lang": "fr-CA"
+}
